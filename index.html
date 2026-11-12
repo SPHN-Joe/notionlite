@@ -178,8 +178,12 @@ function api(name,...args){
       }
     }
   };
+  // Track changes in flight so a background refresh that started earlier can't
+  // bring back something you just deleted or changed.
+  S.mutSeq=(S.mutSeq||0)+1;S.inflight=(S.inflight||0)+1;
   const current=mutationQueue.catch(()=>{}).then(attempt);
   mutationQueue=current.catch(()=>{});
+  const done=()=>{S.inflight--;S.mutSeq++;};current.then(done,done);
   return current;
 }
 function notify(msg){const n=el('div','toast',msg);$('toastRoot').replaceChildren(n);setTimeout(()=>{if(n.isConnected)n.remove();},4000);}
@@ -248,7 +252,7 @@ function redrawTree(){
 function navigate(view,id){closeBlockMenu();S.view=view;S.currentId=id||null;closeSidebar();render();}
 function render(){scheduleCache();redrawTree();document.querySelectorAll('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===S.view));$('breadcrumb').textContent=S.view==='page'?(pageById(S.currentId)?.title||'Page'):{home:'Home',tasks:'Tasks',search:'Search',settings:'Settings'}[S.view];const c=$('content');c.replaceChildren();const div=el('div','page-container');c.append(div);if(S.view==='home')renderHome(div);else if(S.view==='tasks')renderTasks(div);else if(S.view==='page')renderPage(div);else if(S.view==='search')renderSearch(div);else renderSettings(div);}
 function heading(container,eyebrow,title,action){const h=el('div','panel-head');const left=el('div');left.innerHTML='<div class="eyebrow">'+safe(eyebrow)+'</div><h1 class="panel-title">'+safe(title)+'</h1>';h.append(left);if(action)h.append(action);container.append(h);}
-function button(label,fn,cls='btn'){const b=el('button',cls,label);b.addEventListener('click',fn);return b;}
+function button(label,fn,cls='btn'){const b=el('button',cls,label);b.type='button';/* never submit a form by accident (Delete/Cancel used to also Save) */b.addEventListener('click',fn);return b;}
 function markDirty(id){S.dirty.add(id);S.unsynced.add(id);scheduleCache();status('Unsaved changes');clearTimeout(S.timers.get(id));S.timers.set(id,setTimeout(()=>savePageNow(id),MOBILE_EDITOR?2200:900));}
 function savePageNow(id){clearTimeout(S.timers.get(id));S.timers.delete(id);if(!S.dirty.has(id))return S.queues.get(id)||Promise.resolve();const p=pageById(id);if(!p)return Promise.resolve();S.dirty.delete(id);const snapshot=JSON.parse(JSON.stringify({id:p.id,title:p.title,icon:p.icon,blocks:p.blocks}));const prev=S.queues.get(id)||Promise.resolve();const next=prev.catch(()=>{}).then(async()=>{S.saving++;status('Saving…');try{const res=await api('savePage',snapshot);const live=pageById(id);if(live)live.updatedAt=res.updatedAt;if(!S.dirty.has(id))S.unsynced.delete(id);scheduleCache();if(res.trashWarnings?.length){status('Saved; Drive cleanup needs attention',true);notify(res.trashWarnings[0]);}else if(!S.dirty.size)status('All changes saved ✓');}catch(e){if(e.offline){status('ออฟไลน์ · เก็บไว้ในเครื่องแล้ว',true);}else{S.dirty.add(id);error(e);}}finally{S.saving--;}});S.queues.set(id,next);return next;}
 function focusBlock(id,position){const f=document.querySelector('[data-block-id="'+id+'"] textarea');if(f){f.focus();const n=position==='end'?f.value.length:Number.isInteger(position)?position:0;f.setSelectionRange(n,n);}}
@@ -772,7 +776,12 @@ async function refreshFromServer(initial,force){
   if(!initial||!S.pages.length)status('กำลังซิงก์…');
   try{
     const before=JSON.stringify([S.pages,S.tasks]);
+    const seq=S.mutSeq||0;
     const data=await api('getInitialData',!!force);
+    if(S.inflight||(S.mutSeq||0)!==seq){ // data is older than your latest change: ask again shortly
+      if(!S.retryRefresh)S.retryRefresh=setTimeout(()=>{S.retryRefresh=0;refreshFromServer(true,force);},1500);
+      return;
+    }
     S.calendarSync=!!data.calendarSync;
     const keep=new Set([...S.unsynced,...S.dirty]);
     if(S.view==='page'&&isTyping())keep.add(S.currentId); // never swap out the page you are typing in
