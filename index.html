@@ -768,7 +768,11 @@ function writeCache(){clearTimeout(cacheTimer);if(!getConn())return;
   try{localStorage.setItem(CACHE_KEY,JSON.stringify({pages:S.pages,tasks:S.tasks,dbUrl:S.dbUrl,unsynced:[...S.unsynced],at:Date.now()}));}
   catch(e){console.warn('Local copy not saved',e);}}
 function readCache(){try{return JSON.parse(localStorage.getItem(CACHE_KEY)||'null');}catch(_){return null;}}
-function isTyping(){const a=document.activeElement;return !!(a&&$('content').contains(a)&&/^(TEXTAREA|INPUT)$/.test(a.tagName));}
+function isFocusedField(){const a=document.activeElement;return !!(a&&$('content').contains(a)&&/^(TEXTAREA|INPUT)$/.test(a.tagName));}
+// "Typing" = a text box has focus AND you typed in the last 10 s. On a computer the cursor
+// often stays in a box for hours; that alone must not block refreshing.
+let lastKeyAt=0;document.addEventListener('input',()=>{lastKeyAt=Date.now();},true);
+function isTyping(){return isFocusedField()&&Date.now()-lastKeyAt<10000;}
 function resyncUnsynced(){[...S.unsynced].forEach(id=>{if(pageById(id)){S.dirty.add(id);savePageNow(id);}else S.unsynced.delete(id);});}
 let lastRefresh=0;
 async function refreshFromServer(initial,force){
@@ -784,14 +788,14 @@ async function refreshFromServer(initial,force){
     }
     S.calendarSync=!!data.calendarSync;
     const keep=new Set([...S.unsynced,...S.dirty]);
-    if(S.view==='page'&&isTyping())keep.add(S.currentId); // never swap out the page you are typing in
+    if(S.view==='page'&&isFocusedField())keep.add(S.currentId); // never swap out the page you are typing in
     const local=new Map(S.pages.map(p=>[p.id,p]));
     S.pages=data.pages.map(p=>keep.has(p.id)&&local.has(p.id)?local.get(p.id):p);
     S.tasks=data.tasks;S.dbUrl=data.spreadsheetUrl;
     [...S.unsynced].forEach(id=>{if(!pageById(id))S.unsynced.delete(id);});
     const changed=JSON.stringify([S.pages,S.tasks])!==before;
     // Redraw only when something changed, and keep your scroll position.
-    if(changed){if(isTyping())redrawTree();else if(S.view!=='setup'){const sc=$('content').scrollTop;render();$('content').scrollTop=sc;}}
+    if(changed){if(isFocusedField()&&S.view==='page')redrawTree();else if(S.view!=='setup'){const sc=$('content').scrollTop;render();$('content').scrollTop=sc;}}
     status(S.unsynced.size?'กำลังบันทึกที่ค้างไว้…':'Synced ✓');
     resyncUnsynced();
   }catch(e){
@@ -817,9 +821,11 @@ function boot(){
 function softRefresh(){
   if(!getConn()||document.hidden||S.view==='setup'||S.dirty.size||S.saving||isTyping()||document.querySelector('.modal-back,.mention-pop,.block-menu'))return;
   if(Date.now()-lastRefresh<20000)return;
+  const a=document.activeElement;if(isFocusedField()&&a.value&&!a.classList.contains('block-field')&&!a.classList.contains('page-title'))return; // half-typed box: wait
   refreshFromServer(true);
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(softRefresh,300);});
+window.addEventListener('focus',()=>setTimeout(softRefresh,300)); // computer: switching back to the browser window
 setInterval(softRefresh,60000);
 // Save right away when you switch apps or lock the phone.
 document.addEventListener('visibilitychange',()=>{if(document.hidden){writeCache();[...S.dirty].forEach(savePageNow);}});
