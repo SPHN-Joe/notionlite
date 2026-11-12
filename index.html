@@ -85,6 +85,15 @@ body.dark{--bg:#191919;--side:#222;--card:#242424;--ink:#eaeaea;--muted:#999;--l
 .seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .task .seg{flex-basis:100%}
 .due-row{display:flex;gap:6px}.due-row input{flex:1}
+/* v14: tasks show their page; each page lists its own tasks */
+.task-page{display:inline-flex;align-items:center;gap:5px;max-width:100%;margin-top:6px;border:0;background:var(--blue-bg);color:var(--ink);border-radius:6px;padding:4px 8px;font-size:11px;text-align:left}
+.task-page span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task.done .task-title{text-decoration:line-through;color:var(--muted)}
+.page-tasks{margin-top:34px;border-top:1px solid var(--line);padding-top:18px}
+.page-tasks-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.page-tasks-head h2{font-size:17px;margin:0}
+.lane-filter{margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.lane-filter select{border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--ink);max-width:100%}
 </style></head><body>
 <div class="layout" id="app">
   <aside class="sidebar" id="sidebar"><div class="sidebar-head"><div class="brand"><span class="brandmark">N</span> My Workspace <span style="margin-left:auto" class="muted">✦</span></div></div>
@@ -249,7 +258,7 @@ function convertBlockType(pageId,blockId,type){
 
 let treeRefreshTimer=0;
 function scheduleTreeRefresh(){clearTimeout(treeRefreshTimer);treeRefreshTimer=setTimeout(()=>redrawTree(),350);}
-function renderPage(c){const p=pageById(S.currentId);if(!p){navigate('home');return;}const tools=el('div','toolbar');tools.append(button('＋ Subpage',()=>addPage(p.id),'btn small'),button('＋ Task',()=>openTaskModal(null,p.id),'btn small'),button('📎 Upload file',()=>chooseAttachments(p.id),'btn small'),button('↳ Move',()=>openMoveModal(p.id),'btn small'),button('↑',()=>shiftPage(p.id,-1),'btn small'),button('↓',()=>shiftPage(p.id,1),'btn small'),button('Delete page',()=>removePage(p.id),'btn small danger'));const eyebrow=el('div','eyebrow',MOBILE_EDITOR?'แตะบรรทัดเพื่อแก้ไข · ⇥ / ⇤ ใต้บรรทัด: ย่อหน้า · 📅: ใส่วันที่ · ⋮: เปลี่ยนชนิดบล็อก':'Enter: continue to-do even when empty · Tab / Shift+Tab: indent · Backspace on empty: outdent · ⋮: change block type · @date: insert date');c.append(eyebrow);const icon=el('button','page-icon',p.icon);icon.style.background='none';icon.style.border='0';icon.title='Change icon';icon.onclick=()=>{const next=prompt('Choose a page emoji',p.icon);if(next!==null&&next.trim()){p.icon=next.trim().slice(0,12);markDirty(p.id);render();}};c.append(icon);const title=el('input','page-title');title.placeholder='Untitled';title.value=p.title;title.setAttribute('aria-label','Page title');title.addEventListener('input',()=>{p.title=title.value;markDirty(p.id);$('breadcrumb').textContent=p.title;scheduleTreeRefresh();});c.append(title);c.append(tools);const area=el('div');area.style.marginTop='35px';area.id='blocks';c.append(area);renderBlocks(p);c.append(button('📎 Upload any file (up to 5 GiB)',()=>chooseAttachments(p.id),'btn small'));c.append(button('＋ Add a block',()=>{const b=newBlock();p.blocks.push(b);markDirty(p.id);renderBlocks(p);focusBlock(b.id);},'add-block'));}
+function renderPage(c){const p=pageById(S.currentId);if(!p){navigate('home');return;}const tools=el('div','toolbar');tools.append(button('＋ Subpage',()=>addPage(p.id),'btn small'),button('＋ Task',()=>openTaskModal(null,p.id),'btn small'),button('📎 Upload file',()=>chooseAttachments(p.id),'btn small'),button('↳ Move',()=>openMoveModal(p.id),'btn small'),button('↑',()=>shiftPage(p.id,-1),'btn small'),button('↓',()=>shiftPage(p.id,1),'btn small'),button('Delete page',()=>removePage(p.id),'btn small danger'));const eyebrow=el('div','eyebrow',MOBILE_EDITOR?'แตะบรรทัดเพื่อแก้ไข · ⇥ / ⇤ ใต้บรรทัด: ย่อหน้า · 📅: ใส่วันที่ · ⋮: เปลี่ยนชนิดบล็อก':'Enter: continue to-do even when empty · Tab / Shift+Tab: indent · Backspace on empty: outdent · ⋮: change block type · @date: insert date');c.append(eyebrow);const icon=el('button','page-icon',p.icon);icon.style.background='none';icon.style.border='0';icon.title='Change icon';icon.onclick=()=>{const next=prompt('Choose a page emoji',p.icon);if(next!==null&&next.trim()){p.icon=next.trim().slice(0,12);markDirty(p.id);render();}};c.append(icon);const title=el('input','page-title');title.placeholder='Untitled';title.value=p.title;title.setAttribute('aria-label','Page title');title.addEventListener('input',()=>{p.title=title.value;markDirty(p.id);$('breadcrumb').textContent=p.title;scheduleTreeRefresh();});c.append(title);c.append(tools);const area=el('div');area.style.marginTop='35px';area.id='blocks';c.append(area);renderBlocks(p);c.append(button('📎 Upload any file (up to 5 GiB)',()=>chooseAttachments(p.id),'btn small'));c.append(button('＋ Add a block',()=>{const b=newBlock();p.blocks.push(b);markDirty(p.id);renderBlocks(p);focusBlock(b.id);},'add-block'));c.append(renderPageTasks(p));}
 function isoOf(y,m,d){const n=x=>String(x).padStart(2,'0');return y+'-'+n(m+1)+'-'+n(d);}
 function addDaysISO(days){const d=new Date();d.setDate(d.getDate()+days);return isoOf(d.getFullYear(),d.getMonth(),d.getDate());}
 /** Lightweight calendar made of plain buttons: no native picker, no keyboard. */
@@ -427,7 +436,55 @@ function showBlockMenu(anchor,pageId,index,mode='insert'){
 }
 async function addPage(parentId){try{status('Creating page…');const p=await api('createPage',parentId);S.pages.push(p);status('Page created ✓');navigate('page',p.id);$('content').querySelector('.page-title')?.focus();}catch(e){error(e);}}
 async function removePage(id){const p=pageById(id);if(!confirm('Delete "'+p.title+'" and its subpages/tasks? Uploaded attachments will be moved to Google Drive Trash (recoverable). Continue?'))return;try{const r=await api('deletePage',id);const dead=new Set(r.deletedIds);S.pages=S.pages.filter(p=>!dead.has(p.id));S.tasks=S.tasks.filter(t=>!dead.has(t.pageId));navigate('home');notify(r.trashWarnings?.length?'Page deleted; some Drive files could not be trashed: '+r.trashWarnings[0]:'Page deleted; uploaded files moved to Drive Trash');}catch(e){error(e);}}
-function renderTasks(c){heading(c,'Plan & organize','Task board',button('＋ New task',()=>openTaskModal(),'btn primary'));const hint=el('div','hint','Change task status from each card. Click Edit to update title, priority, or due date.');c.append(hint);const board=el('div','board');['To do','In progress','Done'].forEach(statusName=>{const lane=el('div','lane');const items=S.tasks.filter(t=>t.status===statusName).sort((a,b)=>(a.dueDate||'9999').localeCompare(b.dueDate||'9999'));lane.innerHTML='<h3>'+safe(statusName)+'<span class="count">'+items.length+'</span></h3>';items.forEach(t=>{const card=el('div','task');card.append(el('div','task-title',t.title));const bottom=el('div','task-bottom');const ch=el('span','chip '+t.priority.toLowerCase(),t.priority);bottom.append(ch);if(t.dueDate){const now=localISODate();bottom.append(el('span','chip '+(t.dueDate<now&&t.status!=='Done'?'high':t.dueDate===now?'medium':''),'📅 '+t.dueDate));}bottom.append(el('span','chip','Created '+prettyDate(t.createdAt)));const sel=el('select');['To do','In progress','Done'].forEach(v=>{const opt=new Option(v,v);sel.add(opt);});sel.value=t.status;sel.onchange=async()=>{const old=t.status;t.status=sel.value;renderTasksRefresh();try{const updated=await api('upsertTask',t);Object.assign(t,updated);}catch(e){t.status=old;error(e);renderTasksRefresh();}};bottom.append(sel);enhanceSelect(sel);card.append(bottom);const edit=button('Edit',()=>openTaskModal(t),'btn small');edit.style.marginTop='10px';card.append(edit);lane.append(card);});board.append(lane);});c.append(board);}
+function taskSort(a,b){const o={'To do':0,'In progress':1,'Done':2};return (o[a.status]-o[b.status])||(a.dueDate||'9999').localeCompare(b.dueDate||'9999');}
+/** One task card, used on the Task board and inside pages. */
+function taskCard(t,showPage,afterChange){
+  const card=el('div','task'+(t.status==='Done'?' done':''));card.append(el('div','task-title',t.title));
+  const page=t.pageId&&pageById(t.pageId);
+  if(showPage){
+    if(page){const link=el('button','task-page');link.type='button';link.title='Open page';
+      link.innerHTML=safe(page.icon||'📄')+'<span>'+safe(page.title||'Untitled')+'</span>';
+      link.onclick=()=>navigate('page',page.id);card.append(link);}
+    else{const d=el('div');d.style.marginTop='6px';d.append(el('span','chip','ไม่ได้ผูกกับหน้าไหน'));card.append(d);}
+  }
+  const bottom=el('div','task-bottom');
+  bottom.append(el('span','chip '+t.priority.toLowerCase(),t.priority));
+  if(t.dueDate){const now=localISODate();bottom.append(el('span','chip '+(t.dueDate<now&&t.status!=='Done'?'high':t.dueDate===now?'medium':''),'📅 '+t.dueDate));}
+  const sel=el('select');['To do','In progress','Done'].forEach(v=>sel.add(new Option(v,v)));sel.value=t.status;
+  sel.onchange=async()=>{const old=t.status;t.status=sel.value;afterChange();
+    try{const updated=await api('upsertTask',t);Object.assign(t,updated);}catch(e){t.status=old;error(e);afterChange();}};
+  bottom.append(sel);card.append(bottom);enhanceSelect(sel);
+  const edit=button('Edit',()=>openTaskModal(t),'btn small');edit.style.marginTop='10px';card.append(edit);
+  return card;
+}
+function renderTasks(c){
+  heading(c,'Plan & organize','Task board',button('＋ New task',()=>openTaskModal(),'btn primary'));
+  const filter=el('div','lane-filter');filter.append(el('span','hint','แสดงงานของ:'));
+  const fsel=el('select');fsel.add(new Option('ทุกหน้า','__all'));fsel.add(new Option('ไม่ได้ผูกกับหน้า','__none'));
+  S.pages.slice().sort((a,b)=>a.title.localeCompare(b.title)).forEach(p=>{if(S.tasks.some(t=>t.pageId===p.id))fsel.add(new Option((p.icon||'📄')+' '+p.title,p.id));});
+  fsel.value=S.taskFilter&&Array.from(fsel.options).some(o=>o.value===S.taskFilter)?S.taskFilter:'__all';
+  fsel.onchange=()=>{S.taskFilter=fsel.value;render();};filter.append(fsel);c.append(filter);
+  const shown=S.tasks.filter(t=>fsel.value==='__all'||(fsel.value==='__none'?!(t.pageId&&pageById(t.pageId)):t.pageId===fsel.value));
+  const board=el('div','board');
+  ['To do','In progress','Done'].forEach(statusName=>{
+    const lane=el('div','lane');const items=shown.filter(t=>t.status===statusName).sort(taskSort);
+    lane.innerHTML='<h3>'+safe(statusName)+'<span class="count">'+items.length+'</span></h3>';
+    items.forEach(t=>lane.append(taskCard(t,true,renderTasksRefresh)));board.append(lane);
+  });
+  c.append(board);
+}
+/** Tasks that belong to this page, shown under its blocks. Redraws only this section,
+ * so the text you are editing above is never touched. */
+function renderPageTasks(p,host){
+  const wrap=host||el('div','page-tasks');wrap.replaceChildren();wrap.id='pageTasks';
+  const mine=S.tasks.filter(t=>t.pageId===p.id).sort(taskSort);
+  const head=el('div','page-tasks-head');
+  head.append(el('h2','','☑ Tasks ของหน้านี้ ('+mine.filter(t=>t.status!=='Done').length+' ค้าง / '+mine.length+')'));
+  head.append(button('＋ Task',()=>openTaskModal(null,p.id),'btn small'));wrap.append(head);
+  if(!mine.length)wrap.append(el('p','hint','ยังไม่มีงานในหน้านี้ กด ＋ Task เพื่อเพิ่ม'));
+  mine.forEach(t=>wrap.append(taskCard(t,false,()=>renderPageTasks(p,wrap))));
+  return wrap;
+}
 function renderTasksRefresh(){if(S.view==='tasks')render();}
 function openTaskModal(task=null,linkedPage=''){const root=$('modalRoot');root.replaceChildren();const bg=el('div','modal-back');const modal=el('div','modal');const h=el('h2','',task?'Edit task':'New task');modal.append(h);const form=el('form');const field=(label,type,value,options)=>{const wrap=el('div','formfield');wrap.append(el('label','',label));const inp=el(options?'select':'input');if(options)options.forEach(v=>inp.add(new Option(v,v)));else inp.type=type;inp.value=value||'';if(type==='text')inp.required=true;wrap.append(inp);form.append(wrap);return inp;};const title=field('Task title','text',task?.title||'');const stat=field('Status','',task?.status||'To do',['To do','In progress','Done']);const priority=field('Priority','',task?.priority||'Medium',['Low','Medium','High']);const due=field('Due date / Deadline','date',task?.dueDate||'');enhanceSelect(stat);enhanceSelect(priority);
 if(MOBILE_EDITOR){due.type='text';due.readOnly=true;due.placeholder='แตะเพื่อเลือกวันที่';const dwrap=due.parentNode,row=el('div','due-row');dwrap.insertBefore(row,due);row.append(due);
