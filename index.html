@@ -687,6 +687,10 @@ function chooseAttachments(pageId,insertIndex){
   input.onchange=async()=>{
     const files=Array.from(input.files||[]);input.remove();if(!files.length)return;
     const p=pageById(pageId);if(!p){notify('Page is no longer available');return;}
+    // While uploading, background refreshes are paused (they used to swap the page
+    // object, so the finished file block landed on a stale copy and was lost).
+    S.uploading=(S.uploading||0)+1;
+    try{
     const progress=el('div','upload-progress');progress.setAttribute('role','status');
     const area=$('blocks');if(area)area.before(progress);else $('toastRoot').append(progress);
     let complete=0;
@@ -706,13 +710,15 @@ function chooseAttachments(pageId,insertIndex){
           fileId:result.fileId,fileName:result.fileName,mimeType:result.mimeType,
           sizeBytes:result.sizeBytes,driveUrl:result.driveUrl
         });
-        if(Number.isInteger(insertIndex)){p.blocks.splice(insertIndex+complete,0,block);}else p.blocks.push(block);
+        const live=pageById(pageId);if(!live)throw new Error('The page was deleted during upload. The file is still in Google Drive.');
+        if(Number.isInteger(insertIndex)){live.blocks.splice(Math.min(insertIndex+complete,live.blocks.length),0,block);}else live.blocks.push(block);
         complete++;markDirty(pageId);
         await savePageNow(pageId);
-        if(S.view==='page'&&S.currentId===pageId)renderBlocks(p);
+        if(S.view==='page'&&S.currentId===pageId)renderBlocks(live);
       }catch(err){error(err);notify('Upload failed for '+file.name+'. See the error and README fallback.');}
     }
     progress.remove();if(complete)notify(complete+' file(s) added. Stored in your Google Drive.');
+    }finally{S.uploading--;}
   };
   input.click();
   setTimeout(()=>{if(input.isConnected&&!input.files?.length)input.remove();},120000);
@@ -782,7 +788,7 @@ async function refreshFromServer(initial,force){
     const before=JSON.stringify([S.pages,S.tasks]);
     const seq=S.mutSeq||0;
     const data=await api('getInitialData',!!force);
-    if(S.inflight||(S.mutSeq||0)!==seq){ // data is older than your latest change: ask again shortly
+    if(S.inflight||S.uploading||(S.mutSeq||0)!==seq){ // data is older than your latest change: ask again shortly
       if(!S.retryRefresh)S.retryRefresh=setTimeout(()=>{S.retryRefresh=0;refreshFromServer(true,force);},1500);
       return;
     }
@@ -819,7 +825,7 @@ function boot(){
 /* Near real-time: pull fresh data (incl. Google Calendar edits) when the app comes
  * back to the screen and every minute while open — never while you are typing. */
 function softRefresh(){
-  if(!getConn()||document.hidden||S.view==='setup'||S.dirty.size||S.saving||isTyping()||document.querySelector('.modal-back,.mention-pop,.block-menu'))return;
+  if(!getConn()||document.hidden||S.view==='setup'||S.dirty.size||S.saving||S.uploading||isTyping()||document.querySelector('.modal-back,.mention-pop,.block-menu'))return;
   if(Date.now()-lastRefresh<20000)return;
   const a=document.activeElement;if(isFocusedField()&&a.value&&!a.classList.contains('block-field')&&!a.classList.contains('page-title'))return; // half-typed box: wait
   refreshFromServer(true);
